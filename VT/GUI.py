@@ -25,7 +25,7 @@ class DarkLed(Led):
         self._canvas['relief'] = tk.FLAT
         self._canvas['highlightthickness'] = 0
 
-class LabJackContoller(u6.U6):
+class LabJackController(u6.U6):
 
     """Added methods for LabJack U6 control"""
 
@@ -280,7 +280,7 @@ class PfiefferGaugeReader():
         :returns: TODO
         """
         if self.LJ is not None:
-            V = self.LJ.getAIN(self.pinout['Output'], resolutionIndex=8)
+            V = self.LJ.getAIN(int(self.pin[3:]), resolutionIndex=8)
         else:
             V = np.random.random(1)[0]*8
         self.time=time.time()
@@ -312,11 +312,11 @@ class ConvectronReader():
         :returns: TODO
         """
         if self.LJ is not None:
-            V = self.LJ.getAIN(self.pinout['Output'], resolutionIndex=8)
+            V = self.LJ.getAIN(int(self.pin[3:]), resolutionIndex=8)
         else:
             V = np.random.random(1)[0]*8
         self.time=time.time()
-        self.value = 10**(1.667*V - 11.46)
+        self.value = 10**(V-4)
         self.string_var.set(f'{self.value:.2e}')
         self.root.after(self.delay, self.readGauge)
 
@@ -345,11 +345,11 @@ class BaratronReader():
         :returns: TODO
         """
         if self.LJ is not None:
-            V = self.LJ.getAIN(self.pinout['Output'], resolutionIndex=8)
+            V = self.LJ.getAIN(int(self.pin[3:]), resolutionIndex=8)
         else:
             V = np.random.random(1)[0]*8
         self.time=time.time()
-        self.value = 10**(1.667*V - 11.46)
+        self.value = V
         self.string_var.set(f'{self.value:.2e}')
         self.root.after(self.delay, self.readGauge)
 
@@ -378,11 +378,13 @@ class IonGaugeReader():
         :returns: TODO
         """
         if self.LJ is not None:
-            V = self.LJ.getAIN(self.pinout['Output'], resolutionIndex=8)
+            V = self.LJ.getAIN(int(self.pin[3:]), resolutionIndex=8)
         else:
             V = np.random.random(1)[0]*8
         self.time=time.time()
-        self.value = 10**(1.667*V - 11.46)
+        exp = int(np.floor(V))
+        mantissa = (1 - (V - exp))*10
+        self.value = float(f'{mantissa:.2f}e-{exp}')
         self.string_var.set(f'{self.value:.2e}')
         self.root.after(self.delay, self.readGauge)
 
@@ -858,7 +860,10 @@ class MainApp(tk.Tk):
         self.grid_columnconfigure(0, w=1)
         self.grid_columnconfigure(1, w=1)
 
+        self.LJ = LabJackController()
         self.starttime = time.time()
+
+        self.protocol("WM_DELETE_WINDOW", self.on_closing)
 
         s = ttk.Style()
         self.tk.eval('''
@@ -886,10 +891,10 @@ class MainApp(tk.Tk):
         s.configure('Header.TLabel', font=('Times', 18, 'bold underline'))
         s.configure('SubHeader.TLabel', font=('Times', 18, 'underline'))
 
-        convectron = ConvectronReader(self, 'AIN0', LJ=None)
-        baratron = BaratronReader(self, 'AIN1', LJ=None)
-        iongauge = IonGaugeReader(self, 'AIN2', LJ=None)
-        fullrange = PfiefferGaugeReader(self, 'AIN3', LJ=None)
+        convectron = ConvectronReader(self, 'AIN6', LJ=self.LJ)
+        baratron = BaratronReader(self, 'AIN2', LJ=self.LJ)
+        iongauge = IonGaugeReader(self, 'AIN4', LJ=self.LJ)
+        fullrange = PfiefferGaugeReader(self, 'AIN0', LJ=self.LJ)
 
         gaugeframe = Info(self, label='Pressure Gauges', plottable=True, valuelabel='Pressure (Torr)')
         gaugeframe.grid(row=0, column=0, sticky='news')
@@ -907,6 +912,16 @@ class MainApp(tk.Tk):
         filewriter = FileWriter(self, [baratron, convectron, iongauge, fullrange])
         filewriter.controlframe.grid(row=1, column=0, sticky='news')
 
+    def on_closing(self):
+        self.LJ.configIO(NumberTimersEnabled=0)
+        for i in range(2):
+            Value = self.LJ.voltageToDACBits(0.0, dacNumber=i, is16Bits=False)
+            exec('self.LJ.getFeedback(u6.DAC{}_8(Value))'.format(i))
+        for i in range(20):
+            self.LJ.getFeedback(u6.BitDirWrite(i, 0))
+        self.LJ.close()
+        plt.close('all')
+        self.destroy()
 
 if __name__ == '__main__':
     root = MainApp()
