@@ -1,3 +1,4 @@
+import os
 import tkinter as tk
 from tkinter import ttk
 from tk_tools import Led
@@ -286,6 +287,9 @@ class PfiefferGaugeReader():
         self.time=time.time()
         self.value = 10**(1.667*V - 11.46)
         self.string_var.set(f'{self.value:.2e}')
+        if self.value < 1e-11:
+            self.value = np.nan
+            self.string_var.set('Off')
         self.root.after(self.delay, self.readGauge)
 
 class ConvectronReader():
@@ -318,6 +322,9 @@ class ConvectronReader():
         self.time=time.time()
         self.value = 10**(V-4)
         self.string_var.set(f'{self.value:.2e}')
+        if self.value < 2e-4:
+            self.value = np.nan
+            self.string_var.set('Under Range')
         self.root.after(self.delay, self.readGauge)
 
 
@@ -351,6 +358,12 @@ class BaratronReader():
         self.time=time.time()
         self.value = V
         self.string_var.set(f'{self.value:.2e}')
+        if self.value < 3e-3:
+            self.value = np.nan
+            self.string_var.set('Under Range')
+        if self.value > 10.:
+            self.value = np.nan
+            self.string_var.set('Over Range')
         self.root.after(self.delay, self.readGauge)
 
 
@@ -382,27 +395,14 @@ class IonGaugeReader():
         else:
             V = np.random.random(1)[0]*8
         self.time=time.time()
-        exp = int(np.floor(V))
+        exp = abs(int(np.floor(V)))
         mantissa = (1 - (V - exp))*10
         self.value = float(f'{mantissa:.2f}e-{exp}')
         self.string_var.set(f'{self.value:.2e}')
+        if self.value>1e-3:
+            self.value = np.nan
+            self.string_var.set('Off')
         self.root.after(self.delay, self.readGauge)
-
-class DataWriter():
-
-    """Docstring for DataWriter. """
-
-    def __init__(self, tracked):
-        """TODO: to be defined. """
-        self.tracked = tracked
-        self.filename = None
-
-    def FileBrowser(self):
-        """TODO: Docstring for FileBrowser.
-        :returns: TODO
-
-        """
-        pass
 
 
 class CanvasedPlot(ttk.Frame):
@@ -750,7 +750,6 @@ class FileWriter:
 
         self.currently = False
 
-
         self.controlframe = ttk.Frame(self.root)
         self.controlframe.grid_columnconfigure(0, w=1)
         self.controlframe.grid_columnconfigure(1, w=1)
@@ -765,7 +764,7 @@ class FileWriter:
         self.WriteButton.grid(row=3, column=0, columnspan=2, sticky='ew')
 
     def chooseLocation(self):
-        filename = tk.filedialog.asksaveasfilename()
+        filename = tk.filedialog.asksaveasfilename(initialdir='../../NPRE423-2021-VT')
         filename = filename.split('.')[0] + '.csv'
         self.file_str.set(filename.split('/')[-1])
         self.location_str.set('/'.join('/'.join(filename.split('/')[:-1])[-25:].split('/')[1:]))
@@ -777,10 +776,20 @@ class FileWriter:
 
     def writeFile(self):
         if self.WriteButton['text'] == 'Start Saving Data':
-            self.WriteButton['text'] = 'Stop Saving Data'
-            self.ChooseButton['state'] = 'disabled'
-            self.currently = True
-            self.writing()
+            if os.path.exists(self.file):
+                if tk.messagebox.askquestion('Overwrite File?', f"File '{self.file}' alread exists. Do you wish to overwrite it?") == 'yes':
+
+                    self.WriteButton['text'] = 'Stop Saving Data'
+                    self.ChooseButton['state'] = 'disabled'
+                    self.currently = True
+                    self.writing()
+                else:
+                    pass
+            else:
+                self.WriteButton['text'] = 'Stop Saving Data'
+                self.ChooseButton['state'] = 'disabled'
+                self.currently = True
+                self.writing()
         else:
             self.WriteButton['text'] = 'Start Saving Data'
             self.ChooseButton['state'] = 'normal'
@@ -788,6 +797,8 @@ class FileWriter:
             self.data.to_csv(self.file, index=False)
 
     def writing(self):
+        if not self.writing:
+            return
         data = []
         for i in self.objs:
             data.extend([i.time, i.value])
@@ -884,7 +895,7 @@ class MainApp(tk.Tk):
         self.tk.call('package', 'require', 'awdark')
         self.tk.call('package', 'require', 'awlight')
         s.theme_use('awdark')
-        s.configure('.', font=('Times', 16))
+        s.configure('.', font=('Times', 20))
         s.configure('TLabelframe.Label', font=('Times', 20, 'bold'))
         s.configure('Small.TLabelframe.Label', font=('Times', 18, 'bold'))
         s.configure('TNotebook.Tab', font=('Times', 18))
